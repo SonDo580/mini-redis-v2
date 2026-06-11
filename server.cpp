@@ -1,19 +1,45 @@
 #include "common.hpp"
 
-// dummy processing
-static void do_something(int connfd)
+/* handle 1 request */
+static int32_t one_request(int connfd)
 {
-    char rbuf[64] = {};
-    ssize_t n = read(connfd, rbuf, sizeof(rbuf) - 1);
-    if (n < 0)
+    char rbuf[4 + K_MAX_MSG]; // 4-byte header + payload
+    errno = 0;
+    int32_t err = readn(connfd, rbuf, 4);
+    if (err)
+    {
+        msg(errno == 0 ? "EOF" : "read() error");
+        return err;
+    }
+
+    // payload size
+    uint32_t len = 0;
+    memcpy(&len, rbuf, 4); // little-endian
+    if (len > K_MAX_MSG)
+    {
+        msg("too long");
+        return -1;
+    }
+
+    // payload
+    err = readn(connfd, &rbuf[4], len);
+    if (err)
     {
         msg("read() error");
-        return;
+        return err;
     }
-    printf("client says: %s\n", rbuf);
 
-    char wbuf[] = "world";
-    write(connfd, wbuf, strlen(wbuf));
+    // === dummy work ===
+
+    printf("client says: %.*s\n", len, &rbuf[4]);
+
+    // reply using the same protocol
+    const char reply[] = "world";
+    char wbuf[4 + sizeof(reply)];
+    len = (uint32_t)strlen(reply);
+    memcpy(wbuf, &len, 4);
+    memcpy(&wbuf[4], reply, len);
+    return writen(connfd, wbuf, 4 + len);
 }
 
 int main()
@@ -49,7 +75,14 @@ int main()
         if (connfd < 0)
             continue; // error -> wait for next client
 
-        do_something(connfd);
+        // only serve 1 client connection at once
+        while (true)
+        {
+            int32_t err = one_request(connfd);
+            if (err)
+                break;
+        }
+
         close(connfd);
     }
 

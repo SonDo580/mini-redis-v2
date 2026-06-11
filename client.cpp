@@ -1,5 +1,48 @@
 #include "common.hpp"
 
+static int32_t query(int fd, const char *text)
+{
+    // === send request ===
+    uint32_t len = (uint32_t)strlen(text);
+    if (len > K_MAX_MSG)
+        return -1;
+
+    char wbuf[4 + K_MAX_MSG];
+    memcpy(wbuf, &len, 4); // little-endian
+    memcpy(&wbuf[4], text, len);
+
+    int32_t err = writen(fd, wbuf, 4 + len);
+    if (err)
+        return err;
+
+    // === read response ===
+    char rbuf[4 + K_MAX_MSG];
+    errno = 0;
+    err = readn(fd, rbuf, 4);
+    if (err)
+    {
+        msg(errno == 0 ? "EOF" : "read() error");
+        return err;
+    }
+
+    memcpy(&len, rbuf, 4); // little-endian
+    if (len > K_MAX_MSG)
+    {
+        msg("too long");
+        return -1;
+    }
+
+    err = readn(fd, &rbuf[4], len);
+    if (err)
+    {
+        msg("read() error");
+        return err;
+    }
+
+    printf("server says: %.*s\n", len, &rbuf[4]);
+    return 0;
+}
+
 int main()
 {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -15,14 +58,18 @@ int main()
     if (rv)
         die("connect()");
 
-    // dummy work
-    char msg[] = "hello";
-    write(fd, msg, strlen(msg));
+    // make multiple requests
+    int32_t err = query(fd, "hello1");
+    if (err)
+        goto L_DONE;
+    err = query(fd, "hello2");
+    if (err)
+        goto L_DONE;
+    err = query(fd, "hello3");
+    if (err)
+        goto L_DONE;
 
-    char rbuf[64] = {};
-    ssize_t n = read(fd, rbuf, sizeof(rbuf) - 1);
-    if (n < 0)
-        die("read()");
-    printf("server says: %s\n", rbuf);
+L_DONE:
     close(fd);
+    return 0;
 }
