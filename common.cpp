@@ -6,11 +6,17 @@ void msg(const char *msg)
     fprintf(stderr, "%s\n", msg);
 }
 
+/* print error message and error code */
+void msg_errno(const char *msg)
+{
+    int err = errno;
+    fprintf(stderr, "[errno:%d] %s\n", err, msg);
+}
+
 /* print system error code and abort */
 void die(const char *msg)
 {
-    int err = errno;
-    fprintf(stderr, "[%d] %s\n", err, msg);
+    msg_errno(msg);
     abort();
 }
 
@@ -18,7 +24,7 @@ void die(const char *msg)
 read exactly n bytes from fd into buf;
 return 0 on success, -1 on error or unexpected EOF.
 */
-int32_t readn(int fd, char *buf, size_t n)
+int32_t readn(int fd, uint8_t *buf, size_t n)
 {
     while (n > 0)
     {
@@ -41,7 +47,7 @@ int32_t readn(int fd, char *buf, size_t n)
 write exactly n bytes from buf to fd;
 return 0 on success, -1 on error.
 */
-int32_t writen(int fd, const char *buf, size_t n)
+int32_t writen(int fd, const uint8_t *buf, size_t n)
 {
     while (n > 0)
     {
@@ -53,4 +59,17 @@ int32_t writen(int fd, const char *buf, size_t n)
         buf += rv;
     }
     return 0;
+}
+
+/* append len bytes to back of buf. */
+void buf_append(
+    std::vector<uint8_t> &buf, const uint8_t *data, size_t len)
+{
+    buf.insert(buf.end(), data, data + len);
+}
+
+/* remove n bytes from front of buf. */
+void buf_consume(std::vector<uint8_t> &buf, size_t n)
+{
+    buf.erase(buf.begin(), buf.begin() + n);
 }

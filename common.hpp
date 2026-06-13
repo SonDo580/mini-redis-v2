@@ -1,18 +1,33 @@
 #pragma once
 
+// stdlib
+#include <assert.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <string.h>
 #include <stdio.h>
 #include <errno.h>
+
+// system
+#include <fcntl.h>
+#include <poll.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/ip.h>
-#include <string.h>
-#include <assert.h>
 
-const size_t K_MAX_MSG = 4096; // max message size in bytes
+// C++
+#include <vector>
+#include <string>
+
+// max message size: 32 MB (likely larger than kernel's TCP receive buffer)
+const size_t K_MAX_MSG = 32 << 20; 
 
 void msg(const char *msg);
+void msg_errno(const char *msg);
 void die(const char *msg);
 
-int32_t readn(int fd, char *buf, size_t n);
-int32_t writen(int fd, const char *buf, size_t n);
+int32_t readn(int fd, uint8_t *buf, size_t n);
+int32_t writen(int fd, const uint8_t *buf, size_t n);
+
+void buf_append(
+    std::vector<uint8_t> &buf, const uint8_t *data, size_t len);
+void buf_consume(std::vector<uint8_t> &buf, size_t n);
