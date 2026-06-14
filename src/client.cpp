@@ -1,9 +1,9 @@
 #include "common.hpp"
 
-static int32_t send_req(int fd, const uint8_t *text, size_t len);
+static int32_t send_req(int fd, const std::vector<std::string> &cmd);
 static int32_t read_res(int fd);
 
-int main()
+int main(int argc, char **argv)
 {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0)
@@ -18,47 +18,54 @@ int main()
     if (rv)
         die("connect()");
 
-    // multiple pipedline requests
-    std::vector<std::string> query_list = {
-        "hello1", "hello2", "hello3",
-        std::string(K_MAX_MSG, 'z'), // large message (requires multiple event loop iterations)
-        "hello5"};
+    // cmd + args
+    std::vector<std::string> cmd;
+    for (int i = 1; i < argc; i++)
+        cmd.push_back(argv[i]);
 
-    // send requests
-    for (const std::string &s : query_list)
-    {
-        int32_t err = send_req(fd, (const uint8_t *)s.data(), s.size());
-        if (err)
-            goto L_DONE;
-    }
+    int32_t err = send_req(fd, cmd);
+    if (err)
+        goto L_DONE;
 
-    // read responses
-    for (size_t i = 0; i < query_list.size(); i++)
-    {
-        int32_t err = read_res(fd);
-        if (err)
-            goto L_DONE;
-    }
+    err = read_res(fd);
+    if (err)
+        goto L_DONE;
 
 L_DONE:
     close(fd);
     return 0;
 }
 
-static int32_t send_req(int fd, const uint8_t *text, size_t len)
+static int32_t send_req(int fd, const std::vector<std::string> &cmd)
 {
-    if (len > K_MAX_MSG)
-        return -1;
+    // payload size
+    uint32_t len = 4; // for nstr
+    for (const std::string &s : cmd)
+    {
+        len += 4 + s.size(); // for (str_len + str)
+        if (len > K_MAX_MSG)
+            return -1;
+    }
 
     std::vector<uint8_t> wbuf;
-    buf_append(wbuf, (const uint8_t *)&len, 4); // little-endian
-    buf_append(wbuf, text, len);
+    buf_append(wbuf, (const uint8_t *)&len, 4);
+
+    uint32_t n = (uint32_t)cmd.size(); // nstr
+    buf_append(wbuf, (const uint8_t *)&n, 4);
+
+    for (const std::string &s : cmd)
+    {
+        uint32_t str_len = (uint32_t)s.size();
+        buf_append(wbuf, (const uint8_t *)&str_len, 4);
+        buf_append(wbuf, (const uint8_t *)s.data(), s.size());
+    }
+
     return writen(fd, wbuf.data(), wbuf.size());
 }
 
 static int32_t read_res(int fd)
 {
-    // 4-byte header
+    // payload size
     std::vector<uint8_t> rbuf;
     rbuf.resize(4);
     errno = 0;
@@ -68,13 +75,16 @@ static int32_t read_res(int fd)
         msg(errno == 0 ? "EOF" : "read() error");
         return err;
     }
-
-    // payload size
     uint32_t len = 0;
-    memcpy(&len, rbuf.data(), 4); // little-endian
+    memcpy(&len, rbuf.data(), 4);
     if (len > K_MAX_MSG)
     {
         msg("too long");
+        return -1;
+    }
+    if (len < 4)
+    { // < res_code size
+        msg("bad response");
         return -1;
     }
 
@@ -87,9 +97,11 @@ static int32_t read_res(int fd)
         return err;
     }
 
-    // logging
-    printf("server says: len:%u data:%.*s%s\n",
-           len, (len < 100 ? len : 100), &rbuf[4], (len > 100 ? "..." : ""));
+    // print result
+    uint32_t res_code = 0;
+    memcpy(&res_code, &rbuf[4], 4);
+    printf("server says: [%u] %.*s\n",
+           res_code, len - 4, &rbuf[8]);
 
     return 0;
 }

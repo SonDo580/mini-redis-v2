@@ -20,6 +20,25 @@ void die(const char *msg)
     abort();
 }
 
+/* set a file descriptor to non-blocking mode. */
+void fd_set_nb(int fd)
+{
+    errno = 0;
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (errno)
+    {
+        die("fcntl error");
+        return;
+    }
+
+    flags |= O_NONBLOCK;
+
+    errno = 0;
+    fcntl(fd, F_SETFL, flags);
+    if (errno)
+        die("fcntl error");
+}
+
 /*
 read exactly n bytes from fd into buf;
 return 0 on success, -1 on error or unexpected EOF.
