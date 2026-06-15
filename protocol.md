@@ -1,27 +1,64 @@
-# message format:
+# common
+
+- numbers and lengths are encoded in little-endian.
+
+# message
 
 ```
 | size | payload |
-  4B     size B
-
-. size: little-endian
+  4B
 ```
 
-# request payload format:
+# request payload
 
 ```
 | nstr | len1 | str1 | ... | lenn | strn |
   4B     4B                  4B
 
-. nstr: number of strings, little-endian
-. leni: size of stri, little-endian
+. nstr: number of strings
+. leni: size of stri
 ```
 
-# response payload format:
+# response payload
+
+- **nil**:
 
 ```
-| status | data |
-  4B
+| tag |
+  1B
+```
 
-. status: little-endian
+- **int64**:
+
+```
+| tag | int |
+  1B    8B
+```
+
+- **double**:
+
+```
+| tag | dbl |
+  1B    8B
+```
+
+- **string**:
+
+```
+| tag | len | str |
+  1B    4B
+```
+
+- **array**:
+
+```
+| tag | len | items... |
+  1B    4B
+```
+
+- **error**:
+
+```
+| tag | code | msg_size | msg |
+  1B    4B     4B
 ```

@@ -148,3 +148,30 @@ HNode *hm_delete(HMap *hmap, HNode *key, DataEqFn eq)
         return htab_detach(&hmap->older, from);
     return NULL;
 }
+
+size_t hm_size(HMap *hmap)
+{
+    return hmap->newer.size + hmap->older.size;
+}
+
+/* invoke the callback for each node until it returns false. */
+static bool htab_foreach(HTab *htab, ForEachCb cb, void *args)
+{
+    for (size_t i = 0; htab->mask != 0 && i <= htab->mask; i++)
+    {
+        for (HNode *node = htab->tab[i]; node != NULL; node = node->next)
+        {
+            if (!cb(node, args))
+                return false;
+        }
+    }
+    return true;
+}
+
+/* invoke the callback for each node until it returns false. */
+void hm_foreach(HMap *hmap, ForEachCb cb, void *args)
+{
+    // prioritize 'newer'
+    htab_foreach(&hmap->newer, cb, args) &&
+        htab_foreach(&hmap->older, cb, args);
+}
