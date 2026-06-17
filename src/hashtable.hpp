@@ -32,12 +32,13 @@ struct HMap
 };
 
 // function to decide data equality
-typedef bool DataEqFn(HNode *, HNode *);
+typedef bool HEqFn(HNode *, HNode *);
 
 void hm_insert(HMap *hmap, HNode *node);
-HNode *hm_lookup(HMap *hmap, HNode *key, DataEqFn eq);
-HNode *hm_delete(HMap *hmap, HNode *key, DataEqFn eq);
+HNode *hm_lookup(HMap *hmap, HNode *key, HEqFn eq);
+HNode *hm_delete(HMap *hmap, HNode *key, HEqFn eq);
 size_t hm_size(HMap *hmap);
+void hm_clear(HMap *hmap);
 
 typedef bool ForEachCb(HNode *, void *);
 void hm_foreach(HMap *hmap, ForEachCb cb, void *args);

@@ -29,7 +29,7 @@ static void htab_insert(HTab *htab, HNode *node)
 }
 
 /* return incoming pointer to target HNode*. */
-static HNode **htab_lookup(HTab *htab, HNode *key, DataEqFn eq)
+static HNode **htab_lookup(HTab *htab, HNode *key, HEqFn eq)
 {
     if (!htab->tab)
         return NULL;
@@ -122,7 +122,7 @@ void hm_insert(HMap *hmap, HNode *node)
     hm_progressive_rehash(hmap);
 }
 
-HNode *hm_lookup(HMap *hmap, HNode *key, DataEqFn eq)
+HNode *hm_lookup(HMap *hmap, HNode *key, HEqFn eq)
 {
     hm_progressive_rehash(hmap);
 
@@ -133,7 +133,8 @@ HNode *hm_lookup(HMap *hmap, HNode *key, DataEqFn eq)
     return from ? *from : NULL;
 }
 
-HNode *hm_delete(HMap *hmap, HNode *key, DataEqFn eq)
+/* return deleted node. */
+HNode *hm_delete(HMap *hmap, HNode *key, HEqFn eq)
 {
     hm_progressive_rehash(hmap);
 
@@ -174,4 +175,11 @@ void hm_foreach(HMap *hmap, ForEachCb cb, void *args)
     // prioritize 'newer'
     htab_foreach(&hmap->newer, cb, args) &&
         htab_foreach(&hmap->older, cb, args);
+}
+
+void hm_clear(HMap *hmap)
+{
+    free(hmap->newer.tab);
+    free(hmap->older.tab);
+    *hmap = HMap{};
 }

@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include <math.h>
 // system
 #include <fcntl.h>
 #include <poll.h>
@@ -36,8 +37,10 @@ enum Tag : uint8_t
 // error code for TAG_ERR
 enum ErrCode : uint32_t
 {
-  ERR_UNKNOWN = 1, // unknown command
-  ERR_TOO_BIG = 2, // response too big
+  ERR_UNKNOWN = 1,  // unknown command
+  ERR_TOO_BIG = 2,  // response too big
+  ERR_BAD_TYPE = 3, // unexpected value type
+  ERR_BAD_ARG = 4,  // bad arguments
 };
 
 void msg(const char *msg);
@@ -71,3 +74,6 @@ void buf_consume(Buffer &buf, size_t n);
 */
 
 uint64_t str_hash(const uint8_t *data, size_t len);
+
+bool str2dbl(const std::string &s, double &out);
+bool str2int(const std::string &s, int64_t &out);

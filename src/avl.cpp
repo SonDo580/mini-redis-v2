@@ -292,3 +292,122 @@ AVLNode *avl_insert(AVLNode **root, AVLNode *node, AVLCmpFn cmp_fn)
     // rebalance the updated tree
     return avl_fix(node);
 }
+
+/* avl_offset - naive approach:
+   - regular tree traversal.
+
+// return the successor/predecessor at offset from node.
+AVLNode *avl_offset(AVLNode *node, int64_t offset)
+{
+    for (; offset > 0 && node; offset--)
+        node = successor(node);
+    for (; offset < 0 && node; offset++)
+        node = predecessor(node);
+    return node;
+}
+
+
+static AVLNode *successor(AVLNode *node, int64_t offset)
+{
+    assert(node != NULL);
+
+    // return leftmost node in right subtree
+    if (node->right)
+    {
+        for (node = node->right; node->left; node = node->left)
+            ;
+        return node;
+    }
+
+    // find ancestor where argument node is rightmost node in left subtree
+    while (AVLNode *parent = node->parent)
+    {
+        if (node == parent->left)
+            return parent;
+        node = parent;
+    }
+
+    return NULL;
+}
+
+static AVLNode *predecessor(AVLNode *node, int64_t offset)
+{
+    assert(node != NULL);
+
+    // return rightmost node in left subtree
+    if (node->left)
+    {
+        for (node = node->left; node->right; node = node->right)
+            ;
+        return node;
+    }
+
+    // find ancestor where argument node is leftmost node in right subtree
+    while (AVLNode *parent = node->parent)
+    {
+        if (node == parent->right)
+            return parent;
+        node = parent;
+    }
+
+    return NULL;
+}
+*/
+
+/* avl_offset - optimization:
+- let rank(node) be the node's order if we traverse the the in increasing order
+  (in-order traversal).
+
+             D (rank=r+s+1)
+          ___|___...
+(rank=r) B
+      ___|___
+     A       C (size=s)
+
+
+         B (rank=r)
+      ___|___
+     A       D (rank=r+s+1)
+          ___|___
+(size=s) C      ...
+
+Observations:
+- the rank difference between parent and child = in-between subtree size + 1.
+  -> we can quickly recalculate rank difference when traverse.
+- the maximum rank difference within a subtree = subtree size - 1.
+  -> we can quickly know if a target rank is in a subtree or not.
+*/
+
+/* return the successor/predecessor at offset from node. */
+AVLNode *avl_offset(AVLNode *node, int64_t offset)
+{
+    int64_t rank_diff = 0; // rank difference from starting node
+    while (rank_diff != offset)
+    {
+        if (rank_diff < offset && rank_diff + avl_cnt(node->right) >= offset)
+        { // target node is in right subtree
+            node = node->right;
+            rank_diff += avl_cnt(node->left) + 1;
+        }
+        else if (rank_diff > offset && rank_diff - avl_cnt(node->left) <= offset)
+        { // target node is in left subtree
+            node = node->left;
+            rank_diff -= avl_cnt(node->right) + 1;
+        }
+        else
+        { // go to parent
+            AVLNode *parent = node->parent;
+            if (!parent)
+                return NULL;
+
+            if (parent->right == node)
+                rank_diff -= avl_cnt(node->left) + 1;
+            else // parent->left == node
+                rank_diff += avl_cnt(node->right) + 1;
+
+            node = parent;
+        }
+    }
+
+    return node;
+}

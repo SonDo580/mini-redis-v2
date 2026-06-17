@@ -13,12 +13,12 @@ struct AVLNode
     uint32_t cnt = 0;    // subtree size (number of nodes in subtree)
 };
 
+// return -1 if lhs < rhs, 1 if lhs > rhs, 0 if lhs == rhs
+typedef int8_t AVLCmpFn(AVLNode *, AVLNode *);
+
 void avl_init(AVLNode *node);
 uint32_t avl_height(AVLNode *node);
 uint32_t avl_cnt(AVLNode *node);
 AVLNode *avl_del(AVLNode *node);
-
-// return -1 if lhs < rhs, 1 if lhs > rhs, 0 if lhs == rhs
-typedef int8_t AVLCmpFn(AVLNode *, AVLNode *);
-
 AVLNode *avl_insert(AVLNode **root, AVLNode *node, AVLCmpFn cmp_fn);
+AVLNode *avl_offset(AVLNode *node, int64_t offset);
