@@ -9,8 +9,7 @@
 
 #include "common.hpp"
 #include "server_utils.hpp"
-#include "hashtable.hpp"
-#include "zset.hpp"
+#include "exec.hpp"
 
 // per-connection state
 struct Conn
@@ -140,10 +139,8 @@ int main()
     return 0;
 }
 
-/*
-application callback when listenfd is ready:
-accept a new connection; return NULL on error.
-*/
+/* application callback when listenfd is ready:
+   accept a new connection; return NULL on error. */
 static Conn *handle_accept(int listenfd)
 {
     // accept
@@ -266,11 +263,94 @@ static void handle_write(Conn *conn)
     // else: want_write (still) = true
 }
 
+/* read uint32_t from curr.
+   - advance curr and return true on success.
+   - return false on failure. */
+static bool read_u32(
+    const uint8_t *&curr, const uint8_t *end, uint32_t &out)
+{
+    if (curr + 4 > end)
+        return false;
+    memcpy(&out, curr, 4);
+    curr += 4;
+    return true;
+}
+
+/* read string of size n from curr.
+   - advance curr and return true on success.
+   - return false on failure. */
+static bool read_str(
+    const uint8_t *&curr, const uint8_t *end, size_t n, std::string &out)
+{
+    if (curr + n > end)
+        return false;
+    out.assign(curr, curr + n);
+    curr += n;
+    return true;
+}
+
+/* parse request payload (command);
+   return 0 if success, -1 if fail. */
 static int32_t parse_req(
-    const uint8_t *data, size_t size, std::vector<std::string> &out);
-static void exec_cmd(std::vector<std::string> &cmd, Buffer &out);
-static void response_begin(Buffer &out, size_t *header_pos);
-static void response_end(Buffer &out, size_t header_pos);
+    const uint8_t *data, size_t size, std::vector<std::string> &out)
+{
+    const uint8_t *end = data + size;
+
+    // number of strings
+    uint32_t nstr = 0;
+    if (!read_u32(data, end, nstr))
+        return -1;
+    if (nstr > K_MAX_ARGS)
+        return -1;
+
+    while (out.size() < nstr)
+    {
+        // string length
+        uint32_t len = 0;
+        if (!read_u32(data, end, len))
+            return -1;
+
+        // string
+        out.push_back(std::string());
+        if (!read_str(data, end, len, out.back()))
+            return -1;
+    }
+
+    if (data != end) // trailing garbage
+        return -1;
+
+    return 0;
+}
+
+/* set start of response in out buffer & reserve space for header. */
+static void response_begin(Buffer &out, size_t *header_pos)
+{
+    *header_pos = out.size(); // continue from current end
+    buf_append_u32(out, 0);   // reserve space
+}
+
+/* final response payload size */
+static size_t response_size(Buffer &out, size_t header_pos)
+{
+    return out.size() - header_pos - 4;
+}
+
+/* backfill final response size into response message header;
+   error if response is too big. */
+static void response_end(Buffer &out, size_t header_pos)
+{
+    size_t msg_size = response_size(out, header_pos);
+    if (msg_size > K_MAX_MSG)
+    {
+        out.resize(header_pos + 4);
+        out_err(out, ERR_TOO_BIG, "response is too big.");
+        msg_size = response_size(out, header_pos);
+    }
+
+    // message header
+    uint32_t len = (uint32_t)msg_size;
+    memcpy(&out[header_pos], &len, 4);
+}
 
 /* process 1 request if there's enough data;
    return true on success. */
@@ -312,460 +392,4 @@ static bool try_one_request(Conn *conn)
     // - because there may be more messages (support request 'pipelining').
 
     return true;
-}
-
-/* read uint32_t from curr.
-- advance curr and return true on success.
-- return false on failure.
-*/
-static bool read_u32(
-    const uint8_t *&curr, const uint8_t *end, uint32_t &out)
-{
-    if (curr + 4 > end)
-        return false;
-    memcpy(&out, curr, 4);
-    curr += 4;
-    return true;
-}
-
-/* read string of size n from curr.
-- advance curr and return true on success.
-- return false on failure.
-*/
-static bool read_str(
-    const uint8_t *&curr, const uint8_t *end, size_t n, std::string &out)
-{
-    if (curr + n > end)
-        return false;
-    out.assign(curr, curr + n);
-    curr += n;
-    return true;
-}
-
-/* parse request payload (command);
-return 0 if success, -1 if fail. */
-static int32_t parse_req(
-    const uint8_t *data, size_t size, std::vector<std::string> &out)
-{
-    const uint8_t *end = data + size;
-
-    // number of strings
-    uint32_t nstr = 0;
-    if (!read_u32(data, end, nstr))
-        return -1;
-    if (nstr > K_MAX_ARGS)
-        return -1;
-
-    while (out.size() < nstr)
-    {
-        // string length
-        uint32_t len = 0;
-        if (!read_u32(data, end, len))
-            return -1;
-
-        // string
-        out.push_back(std::string());
-        if (!read_str(data, end, len, out.back()))
-            return -1;
-    }
-
-    if (data != end) // trailing garbage
-        return -1;
-
-    return 0;
-}
-
-// helpers for serialization
-static void buf_append_u8(Buffer &buf, uint8_t data)
-{
-    buf_append(buf, (const uint8_t *)&data, 1);
-}
-static void buf_append_u32(Buffer &buf, uint32_t data)
-{
-    buf_append(buf, (const uint8_t *)&data, 4);
-}
-static void buf_append_i64(Buffer &buf, int64_t data)
-{
-    buf_append(buf, (const uint8_t *)&data, 8);
-}
-static void buf_append_dbl(Buffer &buf, double data)
-{
-    buf_append(buf, (const uint8_t *)&data, 8);
-}
-
-// helpers for outputing response to buffer
-static void out_nil(Buffer &out)
-{
-    buf_append_u8(out, TAG_NIL);
-}
-static void out_str(Buffer &out, const char *s, size_t size)
-{
-    buf_append_u8(out, TAG_STR);
-    buf_append_u32(out, (uint32_t)size);
-    buf_append(out, (const uint8_t *)s, size);
-}
-static void out_int(Buffer &out, int64_t val)
-{
-    buf_append_u8(out, TAG_INT);
-    buf_append_i64(out, val);
-}
-static void out_dbl(Buffer &out, double val)
-{
-    buf_append_u8(out, TAG_DBL);
-    buf_append_dbl(out, val);
-}
-static void out_err(
-    Buffer &out, uint32_t code, const std::string &msg)
-{
-    buf_append_u8(out, TAG_ERR);
-    buf_append_u32(out, code);
-    buf_append_u32(out, (uint32_t)msg.size());
-    buf_append(out, (const uint8_t *)msg.data(), msg.size());
-}
-static void out_arr(Buffer &out, uint32_t n)
-{
-    buf_append_u8(out, TAG_ARR);
-    buf_append_u32(out, n);
-    // items are added separately
-}
-static size_t out_begin_arr(Buffer &out)
-{
-    buf_append_u8(out, TAG_ARR);
-    buf_append_u32(out, 0); // reserve space for size, filled by out_end_arr()
-    return out.size() - 4;  // size_pos
-}
-static void out_end_arr(Buffer &out, size_t size_pos, uint32_t n)
-{
-    assert(out[size_pos - 1] == TAG_ARR);
-    memcpy(&out[size_pos], &n, 4);
-}
-
-/* set start of response in out buffer & reserve space for header. */
-static void response_begin(Buffer &out, size_t *header_pos)
-{
-    *header_pos = out.size(); // continue from current end
-    buf_append_u32(out, 0);   // reserve space
-}
-
-/* final response payload size */
-static size_t response_size(Buffer &out, size_t header_pos)
-{
-    return out.size() - header_pos - 4;
-}
-
-/* backfill final response size into response message header;
-   error if response is too big. */
-static void response_end(Buffer &out, size_t header_pos)
-{
-    size_t msg_size = response_size(out, header_pos);
-    if (msg_size > K_MAX_MSG)
-    {
-        out.resize(header_pos + 4);
-        out_err(out, ERR_TOO_BIG, "response is too big.");
-        msg_size = response_size(out, header_pos);
-    }
-
-    // message header
-    uint32_t len = (uint32_t)msg_size;
-    memcpy(&out[header_pos], &len, 4);
-}
-
-// global states
-static struct
-{
-    HMap db; // top-level hashtable
-} g_data;
-
-// value types
-enum ValueType : uint32_t
-{
-    T_INIT = 0,
-    T_STR = 1,  // string
-    T_ZSET = 2, // sorted set
-};
-
-// KV pair for top-level hashtable
-struct Entry
-{
-    struct HNode node; // intrusive hash table node
-    std::string key;
-
-    // === value ===
-
-    uint32_t type = T_INIT;
-    std::string str;
-    ZSet zset;
-};
-
-static Entry *entry_new(uint32_t type)
-{
-    Entry *ent = new Entry();
-    ent->type = type;
-    return ent;
-}
-
-static void entry_del(Entry *ent)
-{
-    if (ent->type == T_ZSET)
-        zset_clear(&ent->zset);
-    delete ent;
-}
-
-// dummy Entry without value for lookup
-struct LookupKey
-{
-    struct HNode node; // intrusive hash table node
-    std::string key;
-};
-
-/* implement HEqFn for 'Entry' and 'LookupKey': compare keys */
-static bool entry_eq(HNode *node, HNode *key)
-{
-    struct Entry *ent = container_of(node, struct Entry, node);
-    struct LookupKey *key_data = container_of(key, struct LookupKey, node);
-    return ent->key == key_data->key;
-}
-
-/* get dummy entry for lookup. */
-static LookupKey get_lookup_key(std::string &key_str)
-{
-    LookupKey key;
-    key.key.swap(key_str);
-    key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
-    return key;
-}
-
-/* get key:
-   - get string value by key.
-   - response with nil if not found. */
-static void exec_get(std::vector<std::string> &cmd, Buffer &out)
-{
-    // dummy entry for lookup
-    LookupKey key = get_lookup_key(cmd[1]);
-
-    // hashtable lookup
-    HNode *node = hm_lookup(&g_data.db, &key.node, entry_eq);
-    if (!node) // not found
-        return out_nil(out);
-
-    // copy value
-    Entry *ent = container_of(node, Entry, node);
-    if (ent->type != T_STR)
-        return out_err(out, ERR_BAD_TYPE, "not a string value");
-    return out_str(out, ent->str.data(), ent->str.size());
-}
-
-/* set key val:
-   - insert key-value pair OR update value by key.
-   - response with nil on success. */
-static void exec_set(std::vector<std::string> &cmd, Buffer &out)
-{
-    // dummy entry for lookup
-    LookupKey key = get_lookup_key(cmd[1]);
-
-    // hashtable lookup
-    HNode *node = hm_lookup(&g_data.db, &key.node, entry_eq);
-    if (node)
-    { // found -> update value
-        Entry *ent = container_of(node, Entry, node);
-        if (ent->type != T_STR)
-            return out_err(out, ERR_BAD_TYPE, "a non-string value exists");
-        ent->str.swap(cmd[2]);
-    }
-    else
-    { // not found -> allocate & insert new KV pair
-        Entry *ent = entry_new(T_STR);
-        ent->key.swap(key.key);
-        ent->node.hcode = key.node.hcode;
-        ent->str.swap(cmd[2]);
-        hm_insert(&g_data.db, &ent->node);
-    }
-
-    return out_nil(out);
-}
-
-/* del key:
-   - delete an entry.
-   - response: 1 if deleted, 0 if not found. */
-static void exec_del(std::vector<std::string> &cmd, Buffer &out)
-{
-    // dummy entry for lookup
-    LookupKey key = get_lookup_key(cmd[1]);
-
-    // hashtable delete
-    HNode *node = hm_delete(&g_data.db, &key.node, &entry_eq);
-    if (node)
-        // deallocate the KV pair
-        entry_del(container_of(node, Entry, node));
-
-    return out_int(out, node ? 1 : 0);
-}
-
-static bool cb_keys(HNode *node, void *args)
-{
-    Buffer &out = *(Buffer *)args;
-    const std::string &key = container_of(node, Entry, node)->key;
-    out_str(out, key.data(), key.size());
-    return true;
-}
-
-/* keys: get all keys in DB. */
-static void exec_keys(std::vector<std::string> &, Buffer &out)
-{
-    out_arr(out, (uint32_t)hm_size(&g_data.db));
-    hm_foreach(&g_data.db, &cb_keys, (void *)&out);
-}
-
-/* get Entry by LookupKey */
-static Entry *get_entry(LookupKey &key)
-{
-    HNode *hnode = hm_lookup(&g_data.db, &key.node, entry_eq);
-    return hnode ? container_of(hnode, Entry, node) : NULL;
-}
-
-/* get Entry by key string */
-static Entry *get_entry(std::string &key_str)
-{
-    LookupKey key = get_lookup_key(key_str);
-    return get_entry(key);
-}
-
-/* zadd zset score name:
-   - add (score, name) to zset OR update score of existing name.
-   - response: 1 if added, 0 if updated. */
-static void exec_zadd(std::vector<std::string> &cmd, Buffer &out)
-{
-    double score;
-    if (!str2dbl(cmd[2], score))
-        return out_err(out, ERR_BAD_ARG, "expect double");
-
-    // get entry
-    LookupKey key = get_lookup_key(cmd[1]);
-    Entry *ent = get_entry(key);
-
-    if (!ent)
-    { // not found -> insert new zset
-        ent = entry_new(T_ZSET);
-        ent->key.swap(key.key);
-        ent->node.hcode = key.node.hcode;
-        hm_insert(&g_data.db, &ent->node);
-    }
-    else
-    { // check existing key
-        if (ent->type != T_ZSET)
-            return out_err(out, ERR_BAD_TYPE, "expect zset");
-    }
-
-    // add (score, name) or update score of existing name
-    const std::string &name = cmd[3];
-    bool added = zset_insert(
-        &ent->zset, name.data(), name.size(), score);
-    return out_int(out, (int64_t)added);
-}
-
-/* zrem zset name:
-   - remove name from zset.
-   - response: 1 if deleted, 0 if not found. */
-static void exec_zrem(std::vector<std::string> &cmd, Buffer &out)
-{
-    // get the zset
-    Entry *ent = get_entry(cmd[1]);
-    if (!ent)
-        return out_int(out, 0);
-    if (ent->type != T_ZSET)
-        return out_err(out, ERR_BAD_TYPE, "expect zset");
-    ZSet *zset = &ent->zset;
-
-    const std::string &name = cmd[2];
-    ZNode *znode = zset_lookup(zset, name.data(), name.size());
-    if (znode)
-        zset_delete(zset, znode);
-    return out_int(out, znode ? 1 : 0);
-}
-
-/* zscore zset name:
-   - get score by name.
-   - response with nil if not found. */
-static void exec_zscore(std::vector<std::string> &cmd, Buffer &out)
-{
-    // get the zset
-    Entry *ent = get_entry(cmd[1]);
-    if (!ent)
-        return out_nil(out);
-    if (ent->type != T_ZSET)
-        return out_err(out, ERR_BAD_TYPE, "expect zset");
-    ZSet *zset = &ent->zset;
-
-    const std::string &name = cmd[2];
-    ZNode *znode = zset_lookup(zset, name.data(), name.size());
-    return znode ? out_dbl(out, znode->score) : out_nil(out);
-}
-
-/* zquery zset score name offset limit:
-   - seek to 1st pair >= (score, name)
-   - move to the successor/predecessor (offset)
-   - iterate forward and output.
-     response: array of (name, score) tuples in specified range. */
-static void exec_zquery(std::vector<std::string> &cmd, Buffer &out)
-{
-    // parse args
-    double score;
-    if (!str2dbl(cmd[2], score))
-        return out_err(out, ERR_BAD_ARG, "expect double");
-
-    const std::string &name = cmd[3];
-
-    int64_t offset, limit;
-    if (!str2int(cmd[4], offset) || !str2int(cmd[5], limit))
-        return out_err(out, ERR_BAD_ARG, "expect int");
-
-    // get the zset
-    Entry *ent = get_entry(cmd[1]);
-    if (!ent)
-        return out_arr(out, 0);
-    if (ent->type != T_ZSET)
-        return out_err(out, ERR_BAD_TYPE, "expect zset");
-    ZSet *zset = &ent->zset;
-
-    if (limit <= 0)
-        return out_arr(out, 0);
-
-    // seek to the start key
-    ZNode *znode = zset_seek_ge(zset, score, name.data(), name.size());
-    znode = znode_offset(znode, offset);
-
-    // iterate and output
-    size_t arr_size_pos = out_begin_arr(out);
-    int64_t n = 0; // TODO: in uint32 range
-    while (znode && n < limit)
-    {
-        out_str(out, znode->name, znode->len);
-        out_dbl(out, znode->score);
-        n += 2; // (name, score) are counted as separate items
-        znode = znode_offset(znode, 1);
-    }
-    out_end_arr(out, arr_size_pos, (uint32_t)n);
-}
-
-/* execute a request command and produce response. */
-static void exec_cmd(std::vector<std::string> &cmd, Buffer &out)
-{
-    if (cmd.size() == 2 && cmd[0] == "get")
-        exec_get(cmd, out);
-    else if (cmd.size() == 3 && cmd[0] == "set")
-        exec_set(cmd, out);
-    else if (cmd.size() == 2 && cmd[0] == "del")
-        exec_del(cmd, out);
-    else if (cmd.size() == 1 && cmd[0] == "keys")
-        exec_keys(cmd, out);
-    else if (cmd.size() == 4 && cmd[0] == "zadd")
-        exec_zadd(cmd, out);
-    else if (cmd.size() == 3 && cmd[0] == "zrem")
-        exec_zrem(cmd, out);
-    else if (cmd.size() == 3 && cmd[0] == "zscore")
-        exec_zscore(cmd, out);
-    else if (cmd.size() == 6 && cmd[0] == "zquery")
-        exec_zquery(cmd, out);
-    else
-        out_err(out, ERR_UNKNOWN, "unknown command.");
 }

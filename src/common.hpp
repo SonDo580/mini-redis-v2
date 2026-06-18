@@ -1,18 +1,10 @@
 #pragma once
 
 // stdlib
-// #include <stdlib.h>
-// #include <string.h>
-// #include <stdio.h>
-// #include <errno.h>
-// #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
-// system
-// #include <fcntl.h>
 // C++
 #include <vector>
-// #include <string>
 
 // max message size: 32 MB (likely larger than kernel's TCP receive buffer)
 const size_t K_MAX_MSG = 32 << 20;
