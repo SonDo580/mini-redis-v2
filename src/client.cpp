@@ -1,3 +1,14 @@
+// stdlib
+#include <stdio.h>
+#include <errno.h>
+#include <string.h>
+// system
+#include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/ip.h>
+// C++
+#include <string>
+
 #include "common.hpp"
 
 static int32_t client_tx(int fd, const std::vector<std::string> &cmd);

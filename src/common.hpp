@@ -1,21 +1,18 @@
 #pragma once
 
 // stdlib
-#include <assert.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-#include <errno.h>
-#include <math.h>
+// #include <stdlib.h>
+// #include <string.h>
+// #include <stdio.h>
+// #include <errno.h>
+// #include <math.h>
+#include <stddef.h>
+#include <stdint.h>
 // system
-#include <fcntl.h>
-#include <poll.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/ip.h>
+// #include <fcntl.h>
 // C++
 #include <vector>
-#include <string>
+// #include <string>
 
 // max message size: 32 MB (likely larger than kernel's TCP receive buffer)
 const size_t K_MAX_MSG = 32 << 20;
@@ -47,33 +44,9 @@ void msg(const char *msg);
 void msg_errno(const char *msg);
 void die(const char *msg);
 
-void fd_set_nb(int fd);
-
 int32_t readn(int fd, uint8_t *buf, size_t n);
 int32_t writen(int fd, const uint8_t *buf, size_t n);
 
 typedef std::vector<uint8_t> Buffer;
 void buf_append(Buffer &buf, const uint8_t *data, size_t len);
 void buf_consume(Buffer &buf, size_t n);
-
-/* return pointer to T given pointer to 1 member */
-#define container_of(ptr, T, member) ({                  \
-    const typeof( ((T *)0)->member ) *__mptr = (ptr);    \
-    (T *)( (char *)__mptr - offsetof(T, member) ); })
-/*
-- `({...})`: statement expression
-  . final value is value of the last expression
-- `typeof( ((T *)0)->member )`: type of T->member
-  . (T *)0: pretend there is an instance of T sitting at address 0
-- `const ... *__mptr = (ptr)`:
-  . ensure ptr is of correct type (at compile time).
-- `(char *)__mptr`: convert to raw byte pointer
-- `offsetof(T, member):` number of bytes between start of struct T and where member lives
-   . account for alignment padding of any compiler.
-   . predictable for each target platform.
-*/
-
-uint64_t str_hash(const uint8_t *data, size_t len);
-
-bool str2dbl(const std::string &s, double &out);
-bool str2int(const std::string &s, int64_t &out);
