@@ -4,8 +4,9 @@
 #include <math.h>
 // system
 #include <fcntl.h>
+#include <time.h>
 
-#include "server_utils.hpp"
+#include "server_common.hpp"
 
 /* set a file descriptor to non-blocking mode. */
 void fd_set_nb(int fd)
@@ -50,6 +51,16 @@ bool str2int(const std::string &s, int64_t &out)
     char *endp = NULL;
     out = strtoll(s.c_str(), &endp, 10);
     return endp == s.c_str() + s.size();
+}
+
+/* monotonic time: elapsed time since system start
+   - cannot be adjusted like wall time
+     -> used to measure duration reliably. */
+uint64_t get_monotonic_msec()
+{
+    struct timespec tv = {0, 0};
+    clock_gettime(CLOCK_MONOTONIC, &tv);
+    return uint64_t(tv.tv_sec) * 1000 + tv.tv_nsec / 1000000;
 }
 
 // === helpers: serialization ===

@@ -1,13 +1,6 @@
 #include "exec.hpp"
-#include "server_utils.hpp"
-#include "hashtable.hpp"
+#include "server_common.hpp"
 #include "zset.hpp"
-
-// global states
-static struct
-{
-    HMap db; // top-level hashtable
-} g_data;
 
 // value types
 enum ValueType : uint32_t
