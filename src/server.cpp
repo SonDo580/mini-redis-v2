@@ -8,8 +8,9 @@
 #include <netinet/ip.h>
 
 #include "common.hpp"
-#include "server_common.hpp"
+#include "server_utils.hpp"
 #include "exec.hpp"
+#include "state.hpp"
 
 /* application callback when listenfd is ready:
    accept a new connection; return NULL on error. */
@@ -289,15 +290,23 @@ static bool try_one_request(Conn *conn)
 /* calculate poll() timeout; return -1 if for 'no timeout'. */
 static int32_t next_timer_ms()
 {
-    if (dlist_empty(&g_data.idle_list))
-        return -1; // no connections -> no timeout
-
     uint64_t now_ms = get_monotonic_msec();
+    uint64_t next_ms = (uint64_t)-1;
 
-    // calculate from 1st item in idle list (most "stale" connection)
-    Conn *conn = container_of(
-        g_data.idle_list.next, Conn, idle_node); // skip dummy head
-    uint64_t next_ms = conn->last_active_ms + K_IDLE_TIMEOUT_MS;
+    // check 1st item in idle list (most "stale" connection)
+    if (!dlist_empty(&g_data.idle_list))
+    {
+        Conn *conn = container_of(
+            g_data.idle_list.next, Conn, idle_node); // skip dummy head
+        next_ms = conn->last_active_ms + K_IDLE_TIMEOUT_MS;
+    }
+
+    // check root of min heap for TTL (smallest timeout ms)
+    if (!g_data.ttl_heap.empty() && g_data.ttl_heap[0].val < next_ms)
+        next_ms = g_data.ttl_heap[0].val;
+
+    if (next_ms == (uint64_t)-1)
+        return -1; // no timeout
 
     if (next_ms <= now_ms) // last process_timers() missed
         return 0;
@@ -305,22 +314,46 @@ static int32_t next_timer_ms()
     return (int32_t)(next_ms - now_ms);
 }
 
+/* implement HEqFn: strict equality (compare pointers). */
+static bool hnode_same(HNode *node, HNode *key)
+{
+    return node == key;
+}
+
 static void process_timers()
 {
     uint64_t now_ms = get_monotonic_msec();
 
-    // keep removing timed-out connections
-    // (idle list is in descending order of idle time)
+    // remove timed-out connections
     while (!dlist_empty(&g_data.idle_list))
     {
         Conn *conn = container_of(
             g_data.idle_list.next, Conn, idle_node); // skip dummy head
         uint64_t next_ms = conn->last_active_ms + K_IDLE_TIMEOUT_MS;
         if (next_ms > now_ms)
-            break;
+            break; // (idle list is in descending order of idle time)
 
         printf("removing idle connection: %d\n", conn->fd);
         conn_destroy(conn);
+    }
+
+    // remove expired entries (next timeout ms at heap root)
+    const size_t k_max_works = 2000;
+    size_t nworks = 0;
+    const Heap &heap = g_data.ttl_heap;
+    while (!heap.empty() && heap[0].val < now_ms)
+    {
+        Entry *ent = container_of(heap[0].ref, Entry, heap_idx);
+        HNode *node = hm_delete(&g_data.db, &ent->node, hnode_same);
+        assert(node == &ent->node);
+
+        printf("key expired: %s\n", ent->key.c_str());
+        entry_del(ent);
+        nworks++;
+
+        // don't stall the server if too many keys expire at once
+        if (nworks == k_max_works)
+            break;
     }
 }
 

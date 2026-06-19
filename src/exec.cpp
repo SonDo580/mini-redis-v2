@@ -1,41 +1,12 @@
+// stdlib
+#include <assert.h>
+// C++
+#include <string>
+#include <vector>
+
 #include "exec.hpp"
-#include "server_common.hpp"
-#include "zset.hpp"
-
-// value types
-enum ValueType : uint32_t
-{
-    T_INIT = 0,
-    T_STR = 1,  // string
-    T_ZSET = 2, // sorted set
-};
-
-// KV pair for top-level hashtable
-struct Entry
-{
-    struct HNode node; // intrusive hash table node
-    std::string key;
-
-    // === value ===
-
-    uint32_t type = T_INIT;
-    std::string str;
-    ZSet zset;
-};
-
-static Entry *entry_new(uint32_t type)
-{
-    Entry *ent = new Entry();
-    ent->type = type;
-    return ent;
-}
-
-static void entry_del(Entry *ent)
-{
-    if (ent->type == T_ZSET)
-        zset_clear(&ent->zset);
-    delete ent;
-}
+#include "state.hpp"
+#include "server_utils.hpp"
 
 // dummy Entry without value for lookup
 struct LookupKey
@@ -273,6 +244,66 @@ static void exec_zquery(std::vector<std::string> &cmd, Buffer &out)
     out_end_arr(out, arr_size_pos, (uint32_t)n);
 }
 
+/* pexpire key ttl_ms:
+   - set TTL for an entry in ms.
+   - return 1 if entry exists, 0 otherwise. */
+static void exec_pexpire(std::vector<std::string> &cmd, Buffer &out)
+{
+    int64_t ttl_ms;
+    if (!str2int(cmd[2], ttl_ms))
+        return out_err(out, ERR_BAD_ARG, "expect int64");
+    assert(ttl_ms >= 0); // TODO: in int32 range
+
+    Entry *ent = get_entry(cmd[1]);
+    if (!ent)
+    {
+        out_int(out, 0);
+        return;
+    }
+
+    entry_set_ttl(ent, (uint64_t)ttl_ms);
+    out_int(out, 1);
+}
+
+/* persist key:
+   - remove TTL for an entry.
+   - return 1 if entry exists and has TTL, 0 otherwise. */
+static void exec_persist(std::vector<std::string> &cmd, Buffer &out)
+{
+    Entry *ent = get_entry(cmd[1]);
+    if (!ent || ent->heap_idx == (size_t)-1)
+    { // entry not found or doesn't have TTL
+        out_int(out, 0);
+        return;
+    }
+
+    entry_remove_ttl(ent);
+    out_int(out, 1);
+}
+
+/* pttl key:
+   - return remaining TTL of an entry in ms.
+   - return -2 if entry doesn't exists.
+   - return -1 if entry doesn't have TTL. */
+static void exec_pttl(std::vector<std::string> &cmd, Buffer &out)
+{
+    Entry *ent = get_entry(cmd[1]);
+    if (!ent)
+    {
+        out_int(out, -2); // not found
+        return;
+    }
+    if (ent->heap_idx == (size_t)-1)
+    {
+        out_int(out, -1); // no TTL
+        return;
+    }
+
+    uint64_t expire_at = g_data.ttl_heap[ent->heap_idx].val;
+    uint64_t now_ms = get_monotonic_msec();
+    return out_int(out, (expire_at > now_ms) ? (expire_at - now_ms) : 0);
+}
+
 /* execute a request command and produce response. */
 void exec_cmd(std::vector<std::string> &cmd, Buffer &out)
 {
@@ -292,6 +323,12 @@ void exec_cmd(std::vector<std::string> &cmd, Buffer &out)
         exec_zscore(cmd, out);
     else if (cmd.size() == 6 && cmd[0] == "zquery")
         exec_zquery(cmd, out);
+    else if (cmd.size() == 3 && cmd[0] == "pexpire")
+        exec_pexpire(cmd, out);
+    else if (cmd.size() == 2 && cmd[0] == "persist")
+        exec_persist(cmd, out);
+    else if (cmd.size() == 2 && cmd[0] == "pttl")
+        exec_pttl(cmd, out);
     else
         out_err(out, ERR_UNKNOWN, "unknown command.");
 }

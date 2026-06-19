@@ -8,7 +8,7 @@
 
 struct HeapItem
 {
-    uint64_t val = 0;
+    uint64_t val = 0;   // (Entry's expires_at ms)
     size_t *ref = NULL; // pointer to embedded array index (Entry::heap_idx)
 };
 

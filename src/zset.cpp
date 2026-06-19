@@ -2,7 +2,7 @@
 #include <assert.h>
 #include <string.h>
 
-#include "server_common.hpp"
+#include "server_utils.hpp"
 #include "zset.hpp"
 
 static ZNode *znode_new(const char *name, size_t len, double score)
