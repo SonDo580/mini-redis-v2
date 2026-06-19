@@ -13,6 +13,9 @@ test_avl: test_avl.cpp avl.cpp avl.hpp
 	$(CXX) $(CXXFLAGS) test_avl.cpp avl.cpp -o test_avl.exe
 test_offset: test_offset.cpp avl.cpp avl.hpp
 	$(CXX) $(CXXFLAGS) test_offset.cpp avl.cpp -o test_offset.exe
+test_heap: test_heap.cpp heap.cpp heap.hpp
+	$(CXX) $(CXXFLAGS) test_heap.cpp heap.cpp -o test_heap.exe
+
 
 .PHONY: clean
 clean:
