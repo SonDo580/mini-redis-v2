@@ -35,13 +35,15 @@ struct Conn
 };
 
 // global states
-static struct
+struct GlobalData
 {
     HMap db;                     // top-level hashtable
     std::vector<Conn *> fd2conn; // map fd -> client connection
     DList idle_list;             // timers for idle connections (in descending idle time)
     Heap ttl_heap;               // timers for TTL (use min heap to retrieve next timeout efficiently)
-} g_data;
+};
+
+extern GlobalData g_data; // declare (define in 'state.cpp')
 
 const uint64_t K_IDLE_TIMEOUT_MS = 10000; // way lower than T32max
 

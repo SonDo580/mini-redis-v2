@@ -4,6 +4,8 @@
 #include "state.hpp"
 #include "server_utils.hpp"
 
+GlobalData g_data; // define (to allocate memory)
+
 Entry *entry_new(uint32_t type)
 {
     Entry *ent = new Entry();
