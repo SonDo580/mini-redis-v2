@@ -8,68 +8,11 @@
 #include <netinet/ip.h>
 // C++
 #include <string>
+#include <vector>
+#include <iostream>
+#include <sstream>
 
 #include "common.hpp"
-
-static int32_t client_tx(int fd, const std::vector<std::string> &cmd);
-
-int main(int argc, char **argv)
-{
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0)
-        die("socket()");
-
-    // connect to server
-    struct sockaddr_in addr = {};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(1234);
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1 (localhost)
-    int rv = connect(fd, (const struct sockaddr *)&addr, sizeof(addr));
-    if (rv)
-        die("connect()");
-
-    // cmd + args
-    std::vector<std::string> cmd;
-    for (int i = 1; i < argc; i++)
-        cmd.push_back(argv[i]);
-
-    // send request + read response + print response
-    client_tx(fd, cmd);
-
-    close(fd);
-    return 0;
-}
-
-static int32_t send_req(int fd, const std::vector<std::string> &cmd);
-static int32_t read_res(int fd, Buffer &rbuf);
-static int32_t print_res(const uint8_t *data, size_t size);
-
-/* send request + read response + print response;
-   return 0 on success; -1 on failure. */
-static int32_t client_tx(int fd, const std::vector<std::string> &cmd)
-{
-    // send request
-    int32_t err = send_req(fd, cmd);
-    if (err)
-        return err;
-
-    // read response
-    Buffer rbuf;
-    err = read_res(fd, rbuf);
-    if (err)
-        return err;
-
-    // print response
-    uint32_t payload_size = rbuf.size() - 4;
-    int32_t consumed = print_res(&rbuf[4], payload_size);
-    if (consumed < 0 || (uint32_t)consumed != payload_size)
-    {
-        msg("bad response");
-        return -1;
-    }
-
-    return 0;
-}
 
 /* return 0 on success; -1 on failure. */
 static int32_t send_req(int fd, const std::vector<std::string> &cmd)
@@ -210,4 +153,89 @@ static int32_t print_res(const uint8_t *data, size_t size)
     default: // unknown type
         return -1;
     }
+}
+
+/* send request + read response + print response;
+   return 0 on success; -1 on failure. */
+static int32_t client_tx(int fd, const std::vector<std::string> &cmd)
+{
+    // send request
+    int32_t err = send_req(fd, cmd);
+    if (err)
+        return err;
+
+    // read response
+    Buffer rbuf;
+    err = read_res(fd, rbuf);
+    if (err)
+        return err;
+
+    // print response
+    uint32_t payload_size = rbuf.size() - 4;
+    int32_t consumed = print_res(&rbuf[4], payload_size);
+    if (consumed < 0 || (uint32_t)consumed != payload_size)
+    {
+        msg("bad response");
+        return -1;
+    }
+
+    return 0;
+}
+
+static void repl(int fd)
+{
+    printf("Enter 'quit' to stop.\n");
+
+    std::string line;
+    while (true)
+    {
+        printf("redis> ");
+        fflush(stdout);
+
+        if (!std::getline(std::cin, line))
+            break;
+
+        std::vector<std::string> cmd;
+        std::string token;
+        std::stringstream ss(line); // ?
+        while (ss >> token)         // ?
+            cmd.push_back(token);
+
+        if (cmd.empty())
+            continue;
+
+        if (cmd.size() == 1 && cmd[0] == "quit")
+            break;
+
+        client_tx(fd, cmd);
+    }
+}
+
+int main(int argc, char **argv)
+{
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0)
+        die("socket()");
+
+    // connect to server
+    struct sockaddr_in addr = {};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(1234);
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1 (localhost)
+    int rv = connect(fd, (const struct sockaddr *)&addr, sizeof(addr));
+    if (rv)
+        die("connect()");
+
+    if (argc > 1)
+    { // one-shot command
+        std::vector<std::string> cmd;
+        for (int i = 1; i < argc; i++)
+            cmd.push_back(argv[i]);
+        client_tx(fd, cmd);
+    }
+    else // REPL mode
+        repl(fd);
+
+    close(fd);
+    return 0;
 }

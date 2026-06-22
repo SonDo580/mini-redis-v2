@@ -47,7 +47,7 @@ struct GlobalData
 
 extern GlobalData g_data; // declare (define in 'state.cpp')
 
-const uint64_t K_IDLE_TIMEOUT_MS = 10000; // way lower than T32max
+const uint64_t K_IDLE_TIMEOUT_MS = 60000; // way lower than T32max
 
 // value types
 enum ValueType : uint32_t
