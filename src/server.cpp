@@ -11,6 +11,7 @@
 #include "server_utils.hpp"
 #include "exec.hpp"
 #include "state.hpp"
+#include "thread_pool.hpp"
 
 /* application callback when listenfd is ready:
    accept a new connection; return NULL on error. */
@@ -360,6 +361,7 @@ static void process_timers()
 int main()
 {
     dlist_init(&g_data.idle_list);
+    thread_pool_init(&g_data.thread_pool, 4);
 
     // listenfd
     int fd = socket(AF_INET, SOCK_STREAM, 0); // IPv4 + TCP

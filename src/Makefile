@@ -3,8 +3,8 @@ CXXFLAGS := -Wall -Wextra -O0 -g
 
 all: server client
 
-server: server.cpp common.cpp common.hpp server_utils.cpp server_utils.hpp state.cpp state.hpp exec.cpp exec.hpp hashtable.cpp hashtable.hpp zset.cpp zset.hpp avl.cpp avl.hpp list.cpp list.hpp heap.cpp heap.hpp
-	$(CXX) $(CXXFLAGS) server.cpp common.cpp server_utils.cpp state.cpp exec.cpp hashtable.cpp zset.cpp avl.cpp list.cpp heap.cpp -o server.exe
+server: server.cpp common.cpp common.hpp server_utils.cpp server_utils.hpp state.cpp state.hpp exec.cpp exec.hpp hashtable.cpp hashtable.hpp zset.cpp zset.hpp avl.cpp avl.hpp list.cpp list.hpp heap.cpp heap.hpp thread_pool.cpp thread_pool.hpp
+	$(CXX) $(CXXFLAGS) server.cpp common.cpp server_utils.cpp state.cpp exec.cpp hashtable.cpp zset.cpp avl.cpp list.cpp heap.cpp thread_pool.cpp -o server.exe
 
 client: client.cpp common.cpp common.hpp
 	$(CXX) $(CXXFLAGS) client.cpp common.cpp -o client.exe

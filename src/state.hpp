@@ -11,6 +11,7 @@
 #include "hashtable.hpp"
 #include "heap.hpp"
 #include "zset.hpp"
+#include "thread_pool.hpp"
 
 // per-connection state
 struct Conn
@@ -41,6 +42,7 @@ struct GlobalData
     std::vector<Conn *> fd2conn; // map fd -> client connection
     DList idle_list;             // timers for idle connections (in descending idle time)
     Heap ttl_heap;               // timers for TTL (use min heap to retrieve next timeout efficiently)
+    ThreadPool thread_pool;
 };
 
 extern GlobalData g_data; // declare (define in 'state.cpp')
