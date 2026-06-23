@@ -411,3 +411,29 @@ AVLNode *avl_offset(AVLNode *node, int64_t offset)
 
     return node;
 }
+
+/* return the absolute rank of a node.
+   (number of nodes before it in sorted order). */
+int64_t avl_rank(AVLNode *node)
+{
+    assert(node != NULL);
+
+    int64_t rank = avl_cnt(node->left);
+
+    // climb up to the root
+    while (node->parent)
+    {
+        AVLNode *parent = node->parent;
+
+        // come up from the right  
+        // -> parent and parent.left are smaller
+        // -> accumulate
+        if (parent->right == node)
+            rank += avl_cnt(parent->left) + 1;
+        // else: come up from the left -> add 0
+
+        node = parent;
+    }
+
+    return rank;
+}

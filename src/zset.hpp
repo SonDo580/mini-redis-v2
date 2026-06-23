@@ -35,3 +35,4 @@ void zset_clear(ZSet *zset);
 ZNode *zset_seek_ge(
     ZSet *zset, double score, const char *name, size_t len);
 ZNode *znode_offset(ZNode *node, int64_t offset);
+int64_t znode_rank(ZNode *node);

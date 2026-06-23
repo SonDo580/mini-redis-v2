@@ -172,6 +172,13 @@ ZNode *znode_offset(ZNode *node, int64_t offset)
     return target ? container_of(target, ZNode, tree) : NULL;
 }
 
+/* return the absolute rank of a node. */
+int64_t znode_rank(ZNode *node)
+{
+    assert(node != NULL);
+    return avl_rank(&node->tree);
+}
+
 static void tree_dispose(AVLNode *node)
 {
     if (!node)

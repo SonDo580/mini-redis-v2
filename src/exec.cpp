@@ -198,6 +198,24 @@ static void exec_zscore(std::vector<std::string> &cmd, Buffer &out)
     return znode ? out_dbl(out, znode->score) : out_nil(out);
 }
 
+/* zrank zset name:
+   - get rank by name.
+   - response with nil if not found. */
+static void exec_zrank(std::vector<std::string> &cmd, Buffer &out)
+{
+    // get the zset
+    Entry *ent = get_entry(cmd[1]);
+    if (!ent)
+        return out_nil(out);
+    if (ent->type != T_ZSET)
+        return out_err(out, ERR_BAD_TYPE, "expect zset");
+    ZSet *zset = &ent->zset;
+
+    const std::string &name = cmd[2];
+    ZNode *znode = zset_lookup(zset, name.data(), name.size());
+    return znode ? out_int(out, znode_rank(znode)) : out_nil(out);
+}
+
 /* zquery zset score name offset limit:
    - seek to 1st pair >= (score, name)
    - move to the successor/predecessor (offset)
@@ -321,6 +339,8 @@ void exec_cmd(std::vector<std::string> &cmd, Buffer &out)
         exec_zrem(cmd, out);
     else if (cmd.size() == 3 && cmd[0] == "zscore")
         exec_zscore(cmd, out);
+    else if (cmd.size() == 3 && cmd[0] == "zrank")
+        exec_zrank(cmd, out);
     else if (cmd.size() == 6 && cmd[0] == "zquery")
         exec_zquery(cmd, out);
     else if (cmd.size() == 3 && cmd[0] == "pexpire")

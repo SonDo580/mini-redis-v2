@@ -22,3 +22,4 @@ uint32_t avl_cnt(AVLNode *node);
 AVLNode *avl_del(AVLNode *node);
 AVLNode *avl_insert(AVLNode **root, AVLNode *node, AVLCmpFn cmp_fn);
 AVLNode *avl_offset(AVLNode *node, int64_t offset);
+int64_t avl_rank(AVLNode *node);
