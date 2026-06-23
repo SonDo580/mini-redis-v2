@@ -73,7 +73,7 @@ static void zset_update(ZSet *zset, ZNode *node, double score)
     zset->root = avl_del(&node->tree);
     avl_init(&node->tree);
     node->score = score;
-    avl_insert(&zset->root, &node->tree, avl_cmp);
+    zset->root = avl_insert(&zset->root, &node->tree, avl_cmp);
 }
 
 /* add a new (score, name) tuple OR update score for existing name;
@@ -91,7 +91,7 @@ bool zset_insert(
     {
         node = znode_new(name, len, score);
         hm_insert(&zset->hmap, &node->hmap);
-        avl_insert(&zset->root, &node->tree, avl_cmp);
+        zset->root = avl_insert(&zset->root, &node->tree, avl_cmp);
         return true;
     }
 }

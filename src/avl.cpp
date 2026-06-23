@@ -185,15 +185,15 @@ static AVLNode *avl_fix(AVLNode *node)
 {
     while (true)
     {
+        // update auxiliary data
+        avl_update(node);
+
         // incoming pointer to fixed subtree
         AVLNode **from = &node;
         AVLNode *parent = node->parent;
         if (parent)
             from = parent->left == node ? &parent->left : &parent->right;
-        // else: from = &root (node is root)
-
-        // update auxiliary data
-        avl_update(node);
+        // else: node is root
 
         // fix imbalances if needed
         uint32_t l = avl_height(node->left);
@@ -425,7 +425,7 @@ int64_t avl_rank(AVLNode *node)
     {
         AVLNode *parent = node->parent;
 
-        // come up from the right  
+        // come up from the right
         // -> parent and parent.left are smaller
         // -> accumulate
         if (parent->right == node)
