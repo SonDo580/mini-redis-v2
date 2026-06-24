@@ -322,33 +322,69 @@ static void exec_pttl(std::vector<std::string> &cmd, Buffer &out)
     return out_int(out, (expire_at > now_ms) ? (expire_at - now_ms) : 0);
 }
 
+typedef void (*CmdHandler)(std::vector<std::string> &, Buffer &);
+struct CmdEntry
+{
+    const char *name;
+    CmdHandler handler;
+    size_t arity; // number of arguments (including command name)
+};
+
+// command handler table
+//
+// possible improvement (if there are many commands):
+// - sort and use binary search.
+// - OR use a hash map.
+static const struct CmdEntry cmd_table[] = {
+    {"get", exec_get, 2},
+    {"set", exec_set, 3},
+    {"del", exec_del, 2},
+    {"keys", exec_keys, 1},
+    {"zadd", exec_zadd, 4},
+    {"zrem", exec_zrem, 3},
+    {"zscore", exec_zscore, 3},
+    {"zrank", exec_zrank, 3},
+    {"zquery", exec_zquery, 6},
+    {"pexpire", exec_pexpire, 3},
+    {"persist", exec_persist, 2},
+    {"pttl", exec_pttl, 2}};
+
+static const size_t cmd_table_size =
+    sizeof(cmd_table) / sizeof(cmd_table[0]);
+
 /* execute a request command and produce response. */
 void exec_cmd(std::vector<std::string> &cmd, Buffer &out)
 {
-    if (cmd.size() == 2 && cmd[0] == "get")
-        exec_get(cmd, out);
-    else if (cmd.size() == 3 && cmd[0] == "set")
-        exec_set(cmd, out);
-    else if (cmd.size() == 2 && cmd[0] == "del")
-        exec_del(cmd, out);
-    else if (cmd.size() == 1 && cmd[0] == "keys")
-        exec_keys(cmd, out);
-    else if (cmd.size() == 4 && cmd[0] == "zadd")
-        exec_zadd(cmd, out);
-    else if (cmd.size() == 3 && cmd[0] == "zrem")
-        exec_zrem(cmd, out);
-    else if (cmd.size() == 3 && cmd[0] == "zscore")
-        exec_zscore(cmd, out);
-    else if (cmd.size() == 3 && cmd[0] == "zrank")
-        exec_zrank(cmd, out);
-    else if (cmd.size() == 6 && cmd[0] == "zquery")
-        exec_zquery(cmd, out);
-    else if (cmd.size() == 3 && cmd[0] == "pexpire")
-        exec_pexpire(cmd, out);
-    else if (cmd.size() == 2 && cmd[0] == "persist")
-        exec_persist(cmd, out);
-    else if (cmd.size() == 2 && cmd[0] == "pttl")
-        exec_pttl(cmd, out);
-    else
+    if (cmd.empty())
+    {
         out_err(out, ERR_UNKNOWN, "unknown command.");
+        return;
+    }
+
+    const std::string &cmd_name = cmd[0];
+    const CmdEntry *target = NULL;
+
+    // linear scan
+    for (size_t i = 0; i < cmd_table_size; i++)
+    {
+        if (cmd_name == cmd_table[i].name)
+        {
+            target = &cmd_table[i];
+            break;
+        }
+    }
+
+    if (!target)
+    {
+        out_err(out, ERR_UNKNOWN, "unknown command.");
+        return;
+    }
+
+    if (cmd.size() != target->arity)
+    {
+        out_err(out, ERR_UNKNOWN, "wrong number of arguments.");
+        return;
+    }
+
+    target->handler(cmd, out);
 }

@@ -52,3 +52,4 @@ zquery zset score name offset limit
 - efficient `Buffer` _(original implementation use `std::vector`, which takes O(n) when removing from the front)_.
 - REPL client.
 - `zrank` command.
+- command table.
